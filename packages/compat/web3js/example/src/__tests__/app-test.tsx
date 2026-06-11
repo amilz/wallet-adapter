@@ -15,9 +15,8 @@ async function renderConnectedWallet() {
             true,
         );
     });
-    // Selecting a wallet is a React state update, so it must flush before
-    // connect() can see the selected adapter — just like a user picking a
-    // wallet from a modal and then clicking "Connect" on a later render.
+    // Selecting a wallet is a React state update; it must flush before
+    // connect() can see the selected adapter.
     act(() => {
         rendered.result.current.wallet.select('Mock Wallet' as WalletName);
     });

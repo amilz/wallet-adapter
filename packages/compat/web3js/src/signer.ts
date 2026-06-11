@@ -40,7 +40,7 @@ export interface WalletAdapterSignerConfig {
  * `sendAndConfirmTransaction`) dispatch on, so it can be passed anywhere those APIs
  * accept a signer. It also works with `@solana/kit` transaction signing functions.
  *
- * Every interface, including `signMessages`, signs serialized *transactions* through the
+ * Every method, including `signMessages`, signs serialized *transactions* through the
  * wallet's `solana:signTransaction` feature — `signMessages` exists because web3.js v3
  * signs transactions through it when no transaction lifetime is available, and it treats
  * its input as transaction message bytes. Do not use this signer to sign arbitrary
@@ -53,10 +53,10 @@ export type WalletAdapterTransactionSigner = MessagePartialSigner &
 /**
  * Create a Kit signer from a connected wallet-adapter adapter.
  *
- * Wallets surfaced through the wallet standard (`StandardWalletAdapter`) are signed with
- * via their `solana:signTransaction` feature, which operates on serialized transaction
- * bytes — no web3.js types cross the boundary, so this works regardless of which
- * web3.js version (if any) is installed.
+ * Wallets surfaced through the wallet standard (`StandardWalletAdapter`) sign via their
+ * `solana:signTransaction` feature, which operates on serialized transaction bytes — no
+ * web3.js types cross the boundary, so this works regardless of which web3.js version
+ * (if any) is installed.
  *
  * Adapters without an underlying wallet-standard wallet, and wallets that only support
  * `solana:signAndSendTransaction`, are not supported: the returned signer's methods
@@ -111,7 +111,7 @@ export function createSignerFromWalletAdapter(
             // The returned transactions carry the input's lifetime constraint only when the
             // wallet left the message untouched: a modified message may have a different
             // lifetime (e.g. a swapped blockhash), and confirming against the original one
-            // would be wrong. Consumers that require a lifetime fail loudly on its absence.
+            // would be wrong.
             return signedTransactions.map((signedTransaction, i) => {
                 const { lifetimeConstraint } = transactions[i] as Transaction & Partial<TransactionWithLifetime>;
                 const messageUnchanged = bytesEqual(transactions[i].messageBytes, signedTransaction.messageBytes);

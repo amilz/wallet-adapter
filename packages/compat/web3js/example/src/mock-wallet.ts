@@ -31,8 +31,8 @@ const account = {
  * Signs a serialized wire transaction without any web3.js dependency.
  *
  * Wire format: shortvec signature count (single byte here, since N < 128),
- * followed by N x 64-byte signatures, followed by the message bytes. The
- * mock wallet is always the fee payer (first signer), so its signature is
+ * followed by N x 64-byte signatures, followed by the message bytes. Assumes
+ * the mock wallet is the fee payer (first signer), so its signature is
  * written into slot 0.
  */
 function signWireTransaction(transaction: Uint8Array): Uint8Array {
@@ -91,7 +91,5 @@ export const mockWallet = {
 };
 
 export function registerMockWallet(): void {
-    // The cast is safe: the object satisfies the wallet-standard interface,
-    // and registerWallet's nominal Wallet type is structural at runtime.
-    registerWallet(mockWallet as Parameters<typeof registerWallet>[0]);
+    registerWallet(mockWallet);
 }
