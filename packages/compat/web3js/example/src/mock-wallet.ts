@@ -45,16 +45,27 @@ function signWireTransaction(transaction: Uint8Array): Uint8Array {
     return signed;
 }
 
+// Real wallets expose no accounts until the user approves a connection, and
+// `StandardWalletAdapter` relies on this: when accounts are pre-populated it
+// connects (and emits `connect`) synchronously, before React effects higher up
+// the tree have subscribed, so the connection is silently dropped.
+let connectedAccounts: (typeof account)[] = [];
+
 export const mockWallet = {
     version: '1.0.0' as const,
     name: 'Mock Wallet',
     icon: ICON as `data:image/svg+xml;base64,${string}`,
     chains: CHAINS,
-    accounts: [account],
+    get accounts() {
+        return connectedAccounts;
+    },
     features: {
         'standard:connect': {
             version: '1.0.0' as const,
-            connect: async () => ({ accounts: [account] }),
+            connect: async () => {
+                connectedAccounts = [account];
+                return { accounts: connectedAccounts };
+            },
         },
         'standard:events': {
             version: '1.0.0' as const,

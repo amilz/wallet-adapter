@@ -10,9 +10,9 @@ const ENDPOINT = 'http://127.0.0.1:8899';
 // Any valid base58-encoded 32-byte blockhash works for offline signing.
 const RECENT_BLOCKHASH = 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi' as Blockhash;
 
-export function AppProviders({ children }: { children: ReactNode }) {
+export function AppProviders({ children, endpoint = ENDPOINT }: { children: ReactNode; endpoint?: string }) {
     return (
-        <ConnectionProvider endpoint={ENDPOINT}>
+        <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={[]} autoConnect={false}>
                 {children}
             </WalletProvider>
@@ -38,22 +38,25 @@ export function useWalletActions() {
         return await signMessage(new TextEncoder().encode('hello world'));
     }, [signMessage]);
 
-    const signTransferToSelf = useCallback(async () => {
-        if (!publicKey) throw new Error('Wallet not connected');
-        if (!signer) throw new Error('Wallet not connected');
-        const transaction = new Transaction({
-            recentBlockhash: RECENT_BLOCKHASH,
-            feePayer: publicKey,
-        }).add(
-            SystemProgram.transfer({
-                fromPubkey: publicKey,
-                toPubkey: publicKey,
-                lamports: 0.1 * LAMPORTS_PER_SOL,
-            }),
-        );
-        await transaction.sign(signer);
-        return transaction;
-    }, [publicKey, signer]);
+    const signTransferToSelf = useCallback(
+        async (recentBlockhash: Blockhash = RECENT_BLOCKHASH) => {
+            if (!publicKey) throw new Error('Wallet not connected');
+            if (!signer) throw new Error('Wallet not connected');
+            const transaction = new Transaction({
+                recentBlockhash,
+                feePayer: publicKey,
+            }).add(
+                SystemProgram.transfer({
+                    fromPubkey: publicKey,
+                    toPubkey: publicKey,
+                    lamports: 0.1 * LAMPORTS_PER_SOL,
+                }),
+            );
+            await transaction.sign(signer);
+            return transaction;
+        },
+        [publicKey, signer],
+    );
 
     return { wallet, connectTo, signHelloWorld, signTransferToSelf };
 }
