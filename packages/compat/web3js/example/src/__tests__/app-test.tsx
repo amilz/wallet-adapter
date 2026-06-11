@@ -63,6 +63,6 @@ describe('wallet-adapter example app', () => {
                 mockWalletPublicKeyBytes,
             ),
         ).toBe(true);
-        expect(signedTransaction.verifySignatures()).toBe(true);
+        expect(await signedTransaction.verifySignatures()).toBe(true);
     });
 });

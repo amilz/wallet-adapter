@@ -8,7 +8,8 @@
     "dependencies": {
         "@solana/wallet-adapter-base": "^0.9.27",
         "@solana/wallet-adapter-react": "^0.15.39",
-        "@solana/web3.js": "^1.98.2",
+        "@solana/web3-compat-wallet-adapter": "file:..",
+        "@solana/web3.js": "3.0.0-rc.1",
         "@wallet-standard/wallet": "^1.1.0",
         "bs58": "^6.0.0",
         "react": "^19.0.0",
@@ -16,7 +17,10 @@
         "tweetnacl": "^1.0.3"
     },
     "pnpm": {
-        "onlyBuiltDependencies": ["esbuild"]
+        "onlyBuiltDependencies": ["esbuild"],
+        "overrides": {
+            "@solana/web3.js": "3.0.0-rc.1"
+        }
     },
     "devDependencies": {
         "@testing-library/react": "^16.3.0",

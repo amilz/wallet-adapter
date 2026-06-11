@@ -1,13 +1,14 @@
 import type { WalletName } from '@solana/wallet-adapter-base';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
+import { useWalletAdapterKitSigner } from '@solana/web3-compat-wallet-adapter';
+import { type Blockhash, LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
 import type { ReactNode } from 'react';
 import { useCallback } from 'react';
 
 const ENDPOINT = 'http://127.0.0.1:8899';
 
 // Any valid base58-encoded 32-byte blockhash works for offline signing.
-const RECENT_BLOCKHASH = 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi';
+const RECENT_BLOCKHASH = 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi' as Blockhash;
 
 export function AppProviders({ children }: { children: ReactNode }) {
     return (
@@ -21,7 +22,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
 export function useWalletActions() {
     const wallet = useWallet();
-    const { select, connect, publicKey, signMessage, signTransaction } = wallet;
+    const { select, connect, publicKey, signMessage } = wallet;
+    const { signer } = useWalletAdapterKitSigner();
 
     const connectTo = useCallback(
         async (walletName: string) => {
@@ -38,7 +40,7 @@ export function useWalletActions() {
 
     const signTransferToSelf = useCallback(async () => {
         if (!publicKey) throw new Error('Wallet not connected');
-        if (!signTransaction) throw new Error('Wallet does not support transaction signing');
+        if (!signer) throw new Error('Wallet not connected');
         const transaction = new Transaction({
             recentBlockhash: RECENT_BLOCKHASH,
             feePayer: publicKey,
@@ -49,8 +51,9 @@ export function useWalletActions() {
                 lamports: 0.1 * LAMPORTS_PER_SOL,
             }),
         );
-        return await signTransaction(transaction);
-    }, [publicKey, signTransaction]);
+        await transaction.sign(signer);
+        return transaction;
+    }, [publicKey, signer]);
 
     return { wallet, connectTo, signHelloWorld, signTransferToSelf };
 }
