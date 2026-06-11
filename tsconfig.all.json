@@ -2,6 +2,9 @@
     "extends": "./tsconfig.root.json",
     "references": [
         {
+            "path": "./packages/compat/web3js/tsconfig.json"
+        },
+        {
             "path": "./packages/core/base/tsconfig.json"
         },
         {
