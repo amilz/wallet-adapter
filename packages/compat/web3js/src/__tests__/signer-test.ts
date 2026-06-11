@@ -90,7 +90,7 @@ describe('createSignerFromWalletAdapter', () => {
             expect(await verifySignature(keyPair.publicKey, signature, signed.messageBytes)).toBe(true);
         });
 
-        it('returns the modified transaction when the wallet modifies it', async () => {
+        it('returns the modified transaction without the stale lifetime when the wallet modifies it', async () => {
             const { wallet, address } = await createMockWallet({ mutateMessage: true });
             const signer = createSignerFromWalletAdapter(createMockAdapter(wallet, address));
             const transaction = createTestTransaction(address);
@@ -99,6 +99,7 @@ describe('createSignerFromWalletAdapter', () => {
 
             expect(signed.messageBytes).not.toEqual(transaction.messageBytes);
             expect(signed.signatures[address]).toHaveLength(64);
+            expect(signed.lifetimeConstraint).toBeUndefined();
         });
     });
 
@@ -114,6 +115,16 @@ describe('createSignerFromWalletAdapter', () => {
             const [fromTransactions] = await signer.signTransactions([transaction]);
 
             expect(fromMessages[address]).toEqual(fromTransactions[address]);
+        });
+
+        it('throws when the wallet modifies the transaction message', async () => {
+            const { wallet, address } = await createMockWallet({ mutateMessage: true });
+            const signer = createSignerFromWalletAdapter(createMockAdapter(wallet, address));
+            const transaction = createTestTransaction(address);
+
+            await expect(
+                signer.signMessages([{ content: new Uint8Array(transaction.messageBytes), signatures: {} }])
+            ).rejects.toThrow(WalletSignTransactionError);
         });
     });
 

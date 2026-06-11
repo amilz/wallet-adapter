@@ -7,5 +7,5 @@ export default {
         '^.+\\.tsx?$': ['ts-jest', { tsconfig: './tsconfig.tests.json' }],
     },
     testEnvironment: 'node',
-    testMatch: ['**/__tests__/**/*-test.ts?(x)'],
+    testMatch: ['<rootDir>/src/**/__tests__/**/*-test.ts?(x)'],
 };

@@ -108,10 +108,17 @@ export function createSignerFromWalletAdapter(
             const encoder = getTransactionEncoder();
             const wireTransactions = transactions.map((transaction) => encoder.encode(transaction) as Uint8Array);
             const signedTransactions = await signViaWallet(wireTransactions, config?.abortSignal);
+            // The returned transactions carry the input's lifetime constraint only when the
+            // wallet left the message untouched: a modified message may have a different
+            // lifetime (e.g. a swapped blockhash), and confirming against the original one
+            // would be wrong. Consumers that require a lifetime fail loudly on its absence.
             return signedTransactions.map((signedTransaction, i) => {
                 const { lifetimeConstraint } = transactions[i] as Transaction & Partial<TransactionWithLifetime>;
+                const messageUnchanged = bytesEqual(transactions[i].messageBytes, signedTransaction.messageBytes);
                 return Object.freeze(
-                    lifetimeConstraint == null ? signedTransaction : { ...signedTransaction, lifetimeConstraint }
+                    lifetimeConstraint != null && messageUnchanged
+                        ? { ...signedTransaction, lifetimeConstraint }
+                        : signedTransaction
                 );
             }) as unknown as readonly (Transaction & TransactionWithinSizeLimit & TransactionWithLifetime)[];
         },
@@ -119,7 +126,10 @@ export function createSignerFromWalletAdapter(
             if (messages.length === 0) return [];
             const wireTransactions = messages.map(({ content }) => wireTransactionFromMessageBytes(content));
             const signedTransactions = await signViaWallet(wireTransactions, config?.abortSignal);
-            return signedTransactions.map(getSignatureDictionary);
+            return signedTransactions.map((signedTransaction, i) => {
+                assertMessageUnchanged(messages[i].content, signedTransaction.messageBytes, adapter.name);
+                return getSignatureDictionary(signedTransaction);
+            });
         },
         async signTransactions(transactions, config) {
             if (transactions.length === 0) return [];
@@ -181,21 +191,20 @@ function wireTransactionFromMessageBytes(messageBytes: Uint8Array): Uint8Array {
     return wireTransaction;
 }
 
+function bytesEqual(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
 function assertMessageUnchanged(
     originalMessageBytes: ArrayLike<number>,
     signedMessageBytes: ArrayLike<number>,
     walletName: string
 ): void {
-    if (originalMessageBytes.length === signedMessageBytes.length) {
-        let identical = true;
-        for (let i = 0; i < originalMessageBytes.length; i++) {
-            if (originalMessageBytes[i] !== signedMessageBytes[i]) {
-                identical = false;
-                break;
-            }
-        }
-        if (identical) return;
-    }
+    if (bytesEqual(originalMessageBytes, signedMessageBytes)) return;
     throw new WalletSignTransactionError(
         `Wallet '${walletName}' modified the transaction while signing it, so its signature cannot be ` +
             `applied to the original transaction. Sign through an API that accepts a modified transaction, ` +
