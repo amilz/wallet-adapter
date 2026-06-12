@@ -6,6 +6,8 @@ import {
     createTransactionMessage,
     generateKeyPair,
     getAddressFromPublicKey,
+    getCompiledTransactionMessageDecoder,
+    getCompiledTransactionMessageEncoder,
     getTransactionDecoder,
     getTransactionEncoder,
     partiallySignTransaction,
@@ -20,6 +22,7 @@ import { SolanaSignTransaction, type SolanaSignTransactionInput } from '@solana/
 import type { Wallet, WalletAccount } from '@wallet-standard/base';
 
 export const TEST_BLOCKHASH = 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi';
+export const MUTATED_BLOCKHASH = 'So11111111111111111111111111111111111111112';
 
 export interface MockWallet {
     address: Address;
@@ -40,8 +43,11 @@ export async function createMockWallet({ mutateMessage = false } = {}): Promise<
             inputs.map(async ({ transaction }) => {
                 let decoded = decoder.decode(transaction);
                 if (mutateMessage) {
-                    const mutated = new Uint8Array(decoded.messageBytes);
-                    mutated[mutated.length - 1] ^= 0xff;
+                    const compiledMessage = getCompiledTransactionMessageDecoder().decode(decoded.messageBytes);
+                    const mutated = getCompiledTransactionMessageEncoder().encode({
+                        ...compiledMessage,
+                        lifetimeToken: blockhash(MUTATED_BLOCKHASH),
+                    });
                     decoded = { ...decoded, messageBytes: mutated as unknown as typeof decoded.messageBytes };
                 }
                 const signed = await partiallySignTransaction([keyPair], decoded);

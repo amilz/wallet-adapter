@@ -77,7 +77,16 @@ importers:
       '@solana/addresses':
         specifier: ^6.8.0
         version: 6.9.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.3)
+      '@solana/codecs-core':
+        specifier: ^6.8.0
+        version: 6.9.0(typescript@5.8.3)
+      '@solana/promises':
+        specifier: ^6.8.0
+        version: 6.9.0(typescript@5.8.3)
       '@solana/signers':
+        specifier: ^6.8.0
+        version: 6.9.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.3)
+      '@solana/transaction-messages':
         specifier: ^6.8.0
         version: 6.9.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.8.3)
       '@solana/transactions':

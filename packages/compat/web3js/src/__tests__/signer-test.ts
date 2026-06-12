@@ -6,7 +6,7 @@ import {
     WalletSignTransactionError,
 } from '@solana/wallet-adapter-base';
 import { createSignerFromWalletAdapter } from '../signer.js';
-import { createMockAdapter, createMockWallet, createTestTransaction } from './helpers.js';
+import { createMockAdapter, createMockWallet, createTestTransaction, MUTATED_BLOCKHASH } from './helpers.js';
 
 describe('createSignerFromWalletAdapter', () => {
     it('throws WalletNotConnectedError when the adapter is not connected', () => {
@@ -90,7 +90,7 @@ describe('createSignerFromWalletAdapter', () => {
             expect(await verifySignature(keyPair.publicKey, signature, signed.messageBytes)).toBe(true);
         });
 
-        it('returns the modified transaction without the stale lifetime when the wallet modifies it', async () => {
+        it('derives a fresh lifetime from the modified message when the wallet modifies it', async () => {
             const { wallet, address } = await createMockWallet({ mutateMessage: true });
             const signer = createSignerFromWalletAdapter(createMockAdapter(wallet, address));
             const transaction = createTestTransaction(address);
@@ -99,7 +99,10 @@ describe('createSignerFromWalletAdapter', () => {
 
             expect(signed.messageBytes).not.toEqual(transaction.messageBytes);
             expect(signed.signatures[address]).toHaveLength(64);
-            expect(signed.lifetimeConstraint).toBeUndefined();
+            expect(signed.lifetimeConstraint).toEqual({
+                blockhash: MUTATED_BLOCKHASH,
+                lastValidBlockHeight: 0xffffffffffffffffn,
+            });
         });
     });
 

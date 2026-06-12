@@ -1,15 +1,20 @@
 import { address, type Address } from '@solana/addresses';
+import { bytesEqual, type ReadonlyUint8Array } from '@solana/codecs-core';
+import { getAbortablePromise } from '@solana/promises';
 import type {
     MessagePartialSigner,
     SignatureDictionary,
     TransactionModifyingSigner,
     TransactionPartialSigner,
 } from '@solana/signers';
+import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages';
 import {
-    getTransactionDecoder,
-    getTransactionEncoder,
+    assertIsTransactionWithinSizeLimit,
+    getTransactionCodec,
+    getTransactionLifetimeConstraintFromCompiledTransactionMessage,
+    type SignaturesMap,
     type Transaction,
-    type TransactionWithinSizeLimit,
+    type TransactionMessageBytes,
     type TransactionWithLifetime,
 } from '@solana/transactions';
 import {
@@ -31,6 +36,14 @@ export interface WalletAdapterSignerConfig {
     /** Chain to request signatures on, e.g. `'solana:mainnet'`. Passed through to the wallet. */
     chain?: IdentifierString;
 }
+
+const compiledTransactionMessageDecoder = getCompiledTransactionMessageDecoder();
+const transactionCodec = getTransactionCodec();
+
+type SignerMethodConfig = Readonly<{
+    abortSignal?: AbortSignal;
+    minContextSlot?: bigint;
+}>;
 
 /**
  * A Kit signer for **transactions only**, backed by a wallet-adapter wallet.
@@ -75,8 +88,9 @@ export function createSignerFromWalletAdapter(
 
     async function signViaWallet(
         wireTransactions: readonly Uint8Array[],
-        abortSignal: AbortSignal | undefined
+        config: SignerMethodConfig | undefined
     ): Promise<readonly Transaction[]> {
+        const { abortSignal, minContextSlot } = config ?? {};
         abortSignal?.throwIfAborted();
         const signTransaction = getSignTransactionMethod(adapter);
         const account = getWalletAccount(adapter as StandardWalletAdapter, signerAddress);
@@ -84,11 +98,10 @@ export function createSignerFromWalletAdapter(
             account,
             ...(chain ? { chain } : null),
             transaction,
+            ...(minContextSlot != null ? { options: { minContextSlot: Number(minContextSlot) } } : null),
         }));
-        const outputs = await signTransaction(...inputs);
-        abortSignal?.throwIfAborted();
-        const decoder = getTransactionDecoder();
-        return outputs.map(({ signedTransaction }) => decoder.decode(signedTransaction));
+        const outputs = await getAbortablePromise(signTransaction(...inputs), abortSignal);
+        return outputs.map(({ signedTransaction }) => transactionCodec.decode(signedTransaction));
     }
 
     function getSignatureDictionary(signedTransaction: Transaction): SignatureDictionary {
@@ -105,27 +118,53 @@ export function createSignerFromWalletAdapter(
         address: signerAddress,
         async modifyAndSignTransactions(transactions, config) {
             if (transactions.length === 0) return [];
-            const encoder = getTransactionEncoder();
-            const wireTransactions = transactions.map((transaction) => encoder.encode(transaction) as Uint8Array);
-            const signedTransactions = await signViaWallet(wireTransactions, config?.abortSignal);
-            // The returned transactions carry the input's lifetime constraint only when the
-            // wallet left the message untouched: a modified message may have a different
-            // lifetime (e.g. a swapped blockhash), and confirming against the original one
-            // would be wrong.
-            return signedTransactions.map((signedTransaction, i) => {
-                const { lifetimeConstraint } = transactions[i] as Transaction & Partial<TransactionWithLifetime>;
-                const messageUnchanged = bytesEqual(transactions[i].messageBytes, signedTransaction.messageBytes);
-                return Object.freeze(
-                    lifetimeConstraint != null && messageUnchanged
-                        ? { ...signedTransaction, lifetimeConstraint }
-                        : signedTransaction
-                );
-            }) as unknown as readonly (Transaction & TransactionWithinSizeLimit & TransactionWithLifetime)[];
+            const wireTransactions = transactions.map(
+                (transaction) => transactionCodec.encode(transaction) as Uint8Array
+            );
+            const signedTransactions = await signViaWallet(wireTransactions, config);
+            // The wallet may have modified the message (e.g. swapped the blockhash), in which
+            // case the input transaction's lifetime constraint no longer describes the signed
+            // one: reuse it only while the message's lifetime token still matches it, and
+            // otherwise derive a fresh constraint from the signed message itself.
+            return await getAbortablePromise(
+                Promise.all(
+                    signedTransactions.map(async (signedTransaction, i) => {
+                        assertIsTransactionWithinSizeLimit(signedTransaction);
+                        const inputTransaction = transactions[i];
+                        const existingLifetime =
+                            'lifetimeConstraint' in inputTransaction
+                                ? (inputTransaction as Transaction & TransactionWithLifetime).lifetimeConstraint
+                                : undefined;
+                        if (
+                            existingLifetime &&
+                            bytesEqual(signedTransaction.messageBytes, inputTransaction.messageBytes)
+                        ) {
+                            return Object.freeze({ ...signedTransaction, lifetimeConstraint: existingLifetime });
+                        }
+                        const compiledTransactionMessage = compiledTransactionMessageDecoder.decode(
+                            signedTransaction.messageBytes
+                        );
+                        if (existingLifetime) {
+                            const currentToken =
+                                'blockhash' in existingLifetime ? existingLifetime.blockhash : existingLifetime.nonce;
+                            if (compiledTransactionMessage.lifetimeToken === currentToken) {
+                                return Object.freeze({ ...signedTransaction, lifetimeConstraint: existingLifetime });
+                            }
+                        }
+                        const lifetimeConstraint =
+                            await getTransactionLifetimeConstraintFromCompiledTransactionMessage(
+                                compiledTransactionMessage
+                            );
+                        return Object.freeze({ ...signedTransaction, lifetimeConstraint });
+                    })
+                ),
+                config?.abortSignal
+            );
         },
         async signMessages(messages, config) {
             if (messages.length === 0) return [];
             const wireTransactions = messages.map(({ content }) => wireTransactionFromMessageBytes(content));
-            const signedTransactions = await signViaWallet(wireTransactions, config?.abortSignal);
+            const signedTransactions = await signViaWallet(wireTransactions, config);
             return signedTransactions.map((signedTransaction, i) => {
                 assertMessageUnchanged(messages[i].content, signedTransaction.messageBytes, adapter.name);
                 return getSignatureDictionary(signedTransaction);
@@ -133,9 +172,10 @@ export function createSignerFromWalletAdapter(
         },
         async signTransactions(transactions, config) {
             if (transactions.length === 0) return [];
-            const encoder = getTransactionEncoder();
-            const wireTransactions = transactions.map((transaction) => encoder.encode(transaction) as Uint8Array);
-            const signedTransactions = await signViaWallet(wireTransactions, config?.abortSignal);
+            const wireTransactions = transactions.map(
+                (transaction) => transactionCodec.encode(transaction) as Uint8Array
+            );
+            const signedTransactions = await signViaWallet(wireTransactions, config);
             return signedTransactions.map((signedTransaction, i) => {
                 assertMessageUnchanged(transactions[i].messageBytes, signedTransaction.messageBytes, adapter.name);
                 return getSignatureDictionary(signedTransaction);
@@ -175,33 +215,25 @@ function getWalletAccount(adapter: StandardWalletAdapter, signerAddress: Address
 }
 
 /**
- * Wrap serialized transaction *message* bytes in the wire transaction format —
- * a compact-u16 signature count followed by all-zero placeholder signatures —
- * so they can be passed to a wallet's `solana:signTransaction` feature.
+ * Wrap serialized transaction *message* bytes in the wire transaction format — with an
+ * all-zero placeholder signature for each required signer — so they can be passed to a
+ * wallet's `solana:signTransaction` feature.
  */
-function wireTransactionFromMessageBytes(messageBytes: Uint8Array): Uint8Array {
-    // Versioned messages start with a version byte (high bit set) followed by the header;
-    // legacy messages start with the header directly. The first header byte is the number
-    // of required signatures, which is always below 0x80, so its compact-u16 encoding is
-    // the single byte itself.
-    const numRequiredSignatures = messageBytes[0] & 0x80 ? messageBytes[1] : messageBytes[0];
-    const wireTransaction = new Uint8Array(1 + numRequiredSignatures * 64 + messageBytes.length);
-    wireTransaction[0] = numRequiredSignatures;
-    wireTransaction.set(messageBytes, 1 + numRequiredSignatures * 64);
-    return wireTransaction;
-}
-
-function bytesEqual(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) return false;
+function wireTransactionFromMessageBytes(messageBytes: ReadonlyUint8Array): Uint8Array {
+    const { header, staticAccounts } = compiledTransactionMessageDecoder.decode(messageBytes);
+    const signatures: SignaturesMap = {};
+    for (const signerAddress of staticAccounts.slice(0, header.numSignerAccounts)) {
+        signatures[signerAddress] = null;
     }
-    return true;
+    return transactionCodec.encode({
+        messageBytes: messageBytes as TransactionMessageBytes,
+        signatures,
+    }) as Uint8Array;
 }
 
 function assertMessageUnchanged(
-    originalMessageBytes: ArrayLike<number>,
-    signedMessageBytes: ArrayLike<number>,
+    originalMessageBytes: ReadonlyUint8Array,
+    signedMessageBytes: ReadonlyUint8Array,
     walletName: string
 ): void {
     if (bytesEqual(originalMessageBytes, signedMessageBytes)) return;
