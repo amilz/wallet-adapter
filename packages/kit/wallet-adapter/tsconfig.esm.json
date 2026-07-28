@@ -1,0 +1,18 @@
+{
+    "extends": "../../../tsconfig.esm.json",
+    "include": ["src"],
+    "exclude": ["src/**/__mocks__", "src/**/__tests__"],
+    "compilerOptions": {
+        "outDir": "lib/esm",
+        "declarationDir": "lib/types",
+        "moduleResolution": "Bundler",
+        "jsx": "react",
+        // The web3.js v3 release candidate is installed under the `web3js-v3` alias so that this
+        // monorepo's `shamefully-hoist` setting doesn't hoist it over the v1 `@solana/web3.js`
+        // that the legacy packages resolve. Source and emitted declarations keep the real
+        // `@solana/web3.js` specifier, which consumers resolve to their own v3 install.
+        "paths": {
+            "@solana/web3.js": ["./node_modules/web3js-v3/lib/index.d.ts"]
+        }
+    }
+}

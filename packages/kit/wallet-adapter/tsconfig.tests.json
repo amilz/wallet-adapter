@@ -1,0 +1,11 @@
+{
+    "extends": "../../../tsconfig.tests.json",
+    "include": ["src"],
+    "compilerOptions": {
+        "moduleResolution": "Bundler",
+        "jsx": "react",
+        "paths": {
+            "@solana/web3.js": ["./node_modules/web3js-v3/lib/index.d.ts"]
+        }
+    }
+}

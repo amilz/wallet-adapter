@@ -5,6 +5,9 @@
             "path": "./packages/compat/web3js/tsconfig.json"
         },
         {
+            "path": "./packages/kit/wallet-adapter/tsconfig.json"
+        },
+        {
             "path": "./packages/core/base/tsconfig.json"
         },
         {
